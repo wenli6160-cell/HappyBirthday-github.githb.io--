@@ -1,20 +1,9 @@
-好的，我已经为您修改了代码。我添加了 Eason Chan (陈奕迅) 的歌曲《热带雨林》作为背景音乐。
-
-**关键改动点：**
-
-1.  **音乐文件嵌入：** 我假设您有一个名为 `tropical_rainforest.mp3` 的音乐文件与您的 HTML 文件位于同一目录下。如果您没有这个文件，请替换为您自己的文件路径。
-2.  **播放按钮：** 添加了一个透明的、位于左上角的播放按钮。
-3.  **用户交互：** 浏览器限制自动播放，所以音乐需要用户点击播放按钮后才会开始播放。
-4.  **音乐控制：** 音乐会在进入“星系内部”（`insideStar = true`）时音量减小（变柔和），离开时恢复正常音量，以增强沉浸感。
-
-请确保将您的音乐文件命名为 `tropical_rainforest.mp3` 并放在与此 HTML 文件相同的文件夹中。
-
-```html
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-    <title>粒子手势交互系统 - 双子星侧边提示融合版</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>粒子手势交互 · 双子星 · 抛物线彗尾</title>
     <style>
         /* ======================================= */
         /* 1. Three.js 基础样式 */
@@ -59,23 +48,50 @@
             right: 15px !important; 
         }
         
-        /* 音乐播放控制按钮样式 */
-        #music-control-btn {
+        /* 音乐控制区域 */
+        #music-controls {
             position: absolute;
             top: 15px;
             left: 15px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+        
+        .music-btn {
             padding: 8px 12px;
-            background-color: rgba(255, 100, 100, 0.8);
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            z-index: 1000;
-            transition: background-color 0.3s, opacity 0.5s;
+            transition: all 0.3s;
             font-weight: bold;
+            font-size: 14px;
         }
-        #music-control-btn:hover {
+        
+        #music-play-pause {
+            background-color: rgba(255, 100, 100, 0.8);
+        }
+        
+        #music-play-pause:hover {
             background-color: rgba(255, 50, 50, 1);
+        }
+        
+        #music-switch {
+            background-color: rgba(100, 100, 255, 0.8);
+        }
+        
+        #music-switch:hover {
+            background-color: rgba(50, 50, 255, 1);
+        }
+        
+        #current-music {
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 8px 12px;
+            border-radius: 4px;
+            color: #ffd700;
+            font-size: 14px;
+            border: 1px solid rgba(255, 215, 0, 0.3);
         }
 
         /* ======================================= */
@@ -97,7 +113,31 @@
             color: #333;
             opacity: 0; 
             transition: opacity 0.5s, transform 0.5s; 
-            z-index: 500; /* 确保不被 Three.js 覆盖 */
+            z-index: 500;
+        }
+
+        /* 图片弹窗样式 */
+        .image-popup {
+            position: fixed;
+            width: 300px;
+            height: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 20px rgba(255, 255, 255, 0.3);
+            opacity: 0;
+            transition: opacity 0.5s, transform 0.5s;
+            z-index: 600;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            pointer-events: none;
+        }
+        
+        .image-popup img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         /* 最终窗口的样式 */
@@ -129,8 +169,12 @@
         <video id="webcam-video" playsinline></video> 
     </div>
     
-    <!-- 音乐控制按钮 -->
-    <button id="music-control-btn">▶️ 播放背景音乐 (热带雨林)</button>
+    <!-- 音乐控制区域 -->
+    <div id="music-controls">
+        <button id="music-play-pause" class="music-btn">▶️ 播放</button>
+        <button id="music-switch" class="music-btn">🔄 切换音乐</button>
+        <span id="current-music">🎵 歌曲 1/2</span>
+    </div>
     
     <button id="fullscreen-btn">全屏</button>
 
@@ -138,9 +182,15 @@
         我想你了
     </div>
 
-    <audio id="background-music" loop preload="auto">
-        <!-- 🚨 请将 tropical_rainforest.mp3 放入同级目录 -->
+    <!-- 两首背景音乐 -->
+    <audio id="background-music-1" loop preload="auto">
         <source src="tropical_rainforest.mp3" type="audio/mpeg">
+        您的浏览器不支持音频元素。
+    </audio>
+    
+    <audio id="background-music-2" loop preload="auto">
+        <!-- 请将第二首音乐文件放在同目录下 -->
+        <source src="second_music.mp3" type="audio/mpeg">
         您的浏览器不支持音频元素。
     </audio>
 
@@ -160,30 +210,105 @@
     
     <script>
         // =================================================================
-        //                 全局变量和参数设置 (双子星部分)
+        //                 烟花可调参数 - 直接在这里修改数值
+        // =================================================================
+        const FIREWORK_PARAMS = {
+            particleSize: 0.02,      // 粒子大小
+            particleCount: 50000,     // 粒子数量
+            brightness: 10.0          // 亮度系数
+        };
+
+        // =================================================================
+        //                 音乐配置参数
+        // =================================================================
+        const MUSIC_CONFIG = {
+            currentTrack: 1,
+            musicFiles: [
+                'tropical_rainforest.mp3',
+                'second_music.mp3'
+            ],
+            musicNames: [
+                '我们一起恋爱吧',
+                '第二首音乐'
+            ]
+        };
+
+        // =================================================================
+        //                 烟花配置参数 - 可自由调整
+        // =================================================================
+        const FIREWORK_CONFIG = {
+            maxConcurrentFireworks: 50,
+            useRandomPositions: true,
+            randomPositionRange: {
+                x: 14,
+                yMin: 6,
+                yMax: 14,
+                z: 14
+            },
+            launchIntervalMin: 300,
+            launchIntervalMax: 4000,
+            rocketSpeedMin: 0.12,
+            rocketSpeedMax: 0.25,
+            trailLength: 120
+        };
+
+        // =================================================================
+        //                 彗星尾巴参数 - 抛物线效果
+        // =================================================================
+        const COMET_TRAIL_CONFIG = {
+            // 尾巴数量
+            trailCount: 16,
+            
+            // 每条尾巴的粒子数量
+            particlesPerTrail: 7000,
+            
+            // 星球直径
+            starDiameter: 3.0,
+            
+            // 尾巴长度
+            maxTrailLength: 8.0,
+            
+            // 抛物线高度 - 与旋转方向相反
+            parabolaHeight: 4.0,
+            
+            // 弯曲方向 - 与旋转方向相反
+            curveDirection: -1,  // -1 表示反向弯曲
+            
+            // 亮度参数
+            baseBrightness: 0.6,
+            brightnessFalloff: 2.5,
+            
+            // 粒子大小
+            particleSize: 0.01
+        };
+
+        // =================================================================
+        //                 全局变量和参数设置
         // =================================================================
         let scene, camera, renderer, composer; 
-        let star1, star2, trailParticles, backgroundParticles; 
-        let imagePlanes = []; 
-        let fireworks = []; 
+        let star1, star2, backgroundParticles; 
+        let cometTrails1 = [];
+        let cometTrails2 = [];
+        let imagePlanes = [];
+        let imagePopups = [];
+        let fireworks = [];               
+        let rockets = [];                  
+        let nextLaunchTime = 0;        
         let lastFireworkTime = 0; 
         let lastMotionTime = 0; 
         let orbitTime = 0; 
         let cameraTargetZ = 10; 
         let insideStar = false; 
-        let finalTipShown = false; // 标记最终窗口是否已显示
+        let finalTipShown = false;
         let musicPlaying = false; 
 
         const ORBIT_TILT_ANGLE = Math.PI * 0.11; 
-        let lastStar1Position = new THREE.Vector3(); 
-        const TRAIL_VELOCITY = 0.12; 
+        const TRAIL_VELOCITY = 0.12;
 
         const Params = {
             starColor1: 0x81C7E6, starColor2: 0xEFC4C4, particleSize: 0.031, targetSpread: 3.5, 
             starDensity: 14000, orbitRadius: 2.8, orbitSpeed: 0.012,
-            trailColor: 0x90B5D6, trailDensity: 2000, trailSpread: 0.15, trailSize: 0.02, trailLength: 120,
-            exposure: 1.2, bloomStrength: 1.7, bloomThreshold: 0.7, bloomRadius: 0.98,
-            fireworkInterval: 1, fireworkDensity: 5200, fireworkSpread: 5, fireworkLifetime: 2, enableFireworks: true
+            exposure: 1.2, bloomStrength: 1.7, bloomThreshold: 0.7, bloomRadius: 0.98
         };
 
         const IMAGE_FILES = [
@@ -198,6 +323,8 @@
             'mmexport1764823054048.jpg', 'mmexport1764823065525.jpg', 
             'mmexport1764823101912.jpg', 'mmexport1764823110358.jpg', 
             'mmexport1764823157249.jpg', 'mmexport1764823175328.jpg',
+            '2531d7b30f76c414d2f0ed63ffe5c4c2.jpg','352bcb9d3d44f4a314be701580901ac3.jpg','1f11e4a5e6e8a09df676b8c9dda14a15.jpg',
+            '3940783d25012a2c2895c442c966a52f.jpg','a908a75ffa0527a1542577b0d8521277.jpg','cae73ce1d6716a25d449d7440601352c.jpg',
         ];
         
         const IMAGE_BASE_PATH = ''; 
@@ -213,7 +340,87 @@
         let positionYHistory = [];
 
         // =================================================================
-        //                 温馨提示变量和函数 
+        //                 音乐控制函数
+        // =================================================================
+        const musicElements = [
+            document.getElementById('background-music-1'),
+            document.getElementById('background-music-2')
+        ];
+        
+        const musicPlayPauseBtn = document.getElementById('music-play-pause');
+        const musicSwitchBtn = document.getElementById('music-switch');
+        const currentMusicSpan = document.getElementById('current-music');
+
+        function updateMusicDisplay() {
+            currentMusicSpan.textContent = `🎵 ${MUSIC_CONFIG.musicNames[MUSIC_CONFIG.currentTrack - 1]}`;
+        }
+
+        function switchMusic() {
+            if (musicPlaying) {
+                musicElements[MUSIC_CONFIG.currentTrack - 1].pause();
+            }
+            
+            MUSIC_CONFIG.currentTrack = MUSIC_CONFIG.currentTrack === 1 ? 2 : 1;
+            
+            updateMusicDisplay();
+            
+            if (musicPlaying) {
+                musicElements[MUSIC_CONFIG.currentTrack - 1].play().catch(error => {
+                    console.warn("音乐播放失败:", error);
+                    musicPlaying = false;
+                    musicPlayPauseBtn.textContent = '▶️ 播放';
+                });
+            }
+            
+            const targetVolume = insideStar ? 0.2 : 0.7;
+            musicElements[MUSIC_CONFIG.currentTrack - 1].volume = targetVolume;
+        }
+
+        function toggleMusic() {
+            const currentMusic = musicElements[MUSIC_CONFIG.currentTrack - 1];
+            
+            if (musicPlaying) {
+                currentMusic.pause();
+                musicPlayPauseBtn.textContent = '▶️ 播放';
+            } else {
+                currentMusic.play().then(() => {
+                    musicPlayPauseBtn.textContent = '⏸️ 暂停';
+                }).catch(error => {
+                    console.warn("音乐播放失败:", error);
+                    musicPlayPauseBtn.textContent = '▶️ 播放';
+                });
+            }
+            musicPlaying = !musicPlaying;
+        }
+        
+        function manageMusicVolume() {
+            if (!musicPlaying) return;
+            
+            const currentMusic = musicElements[MUSIC_CONFIG.currentTrack - 1];
+            const musicVolume = currentMusic.volume;
+            let targetVolume = 0.7;
+            const INSIDE_VOLUME = 0.2;
+            
+            if (insideStar) {
+                targetVolume = INSIDE_VOLUME;
+            }
+
+            currentMusic.volume += (targetVolume - musicVolume) * 0.2;
+        }
+
+        function setupMusicControls() {
+            musicPlayPauseBtn.addEventListener('click', toggleMusic);
+            musicSwitchBtn.addEventListener('click', switchMusic);
+            
+            updateMusicDisplay();
+            
+            musicElements.forEach(music => {
+                music.load();
+            });
+        }
+
+        // =================================================================
+        //                 温馨提示和图片弹窗函数 
         // =================================================================
         const W_TIPS = [
             '多喝水哦~', '小心我揍你', '哈哈哈哈哈哈哈可爱','我害怕','吃饱了','吃饱了','好宝宝','我可是大王','小猪',
@@ -234,9 +441,15 @@
         
         const w_finalWindowElement = document.getElementById('final-window');
 
-        /**
-         * 创建一个模拟的提示窗口元素
-         */
+        const preloadedImages = [];
+        function preloadImages() {
+            IMAGE_FILES.forEach(filename => {
+                const img = new Image();
+                img.src = IMAGE_BASE_PATH + filename;
+                preloadedImages.push(img);
+            });
+        }
+
         function createTipWindow() {
             const W_WIDTH = 300;
             const screenWidth = window.innerWidth;
@@ -286,9 +499,59 @@
             }
         }
 
-        /**
-         * 创建最终的“我想你了”窗口
-         */
+        function createImagePopup() {
+            if (preloadedImages.length === 0) return;
+            
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+            
+            const imgIndex = Math.floor(Math.random() * preloadedImages.length);
+            const imgSrc = preloadedImages[imgIndex].src;
+            
+            const POPUP_WIDTH = 300;
+            const centerMargin = (screenWidth - W_CENTER_EXCLUSION) / 2;
+            
+            let x;
+            if (Math.random() < 0.5) {
+                x = Math.random() * Math.max(0, centerMargin - POPUP_WIDTH);
+            } else {
+                x = centerMargin + W_CENTER_EXCLUSION + Math.random() * Math.max(0, screenWidth - (centerMargin + W_CENTER_EXCLUSION) - POPUP_WIDTH);
+            }
+            
+            const y = Math.random() * (screenHeight - 300);
+            
+            const popupDiv = document.createElement('div');
+            popupDiv.className = 'image-popup';
+            
+            const img = document.createElement('img');
+            img.src = imgSrc;
+            popupDiv.appendChild(img);
+            
+            popupDiv.style.left = `${x}px`;
+            popupDiv.style.top = `${y}px`;
+            popupDiv.style.transform = 'scale(0.8)';
+            
+            document.body.appendChild(popupDiv);
+            
+            setTimeout(() => {
+                popupDiv.style.opacity = '1';
+                popupDiv.style.transform = 'scale(1)';
+            }, 50);
+            
+            const duration = 2000 + Math.random() * 3000;
+            
+            setTimeout(() => {
+                popupDiv.style.opacity = '0';
+                popupDiv.style.transform = 'scale(0.8)';
+                
+                setTimeout(() => {
+                    if (popupDiv.parentElement) {
+                        popupDiv.parentElement.removeChild(popupDiv);
+                    }
+                }, 500);
+            }, duration);
+        }
+
         function createFinalWindow() {
             if (finalTipShown) return;
             finalTipShown = true; 
@@ -299,12 +562,12 @@
             }, 50);
         }
 
-        /**
-         * 循环创建窗口的主函数 (已添加 insideStar 联动)
-         */
         function createWindowsLoop() {
             if (insideStar) {
-                setTimeout(createWindowsLoop, 500); 
+                if (Math.random() < 0.8) {
+                    createImagePopup();
+                }
+                setTimeout(createWindowsLoop, 300);
                 return;
             }
 
@@ -316,7 +579,7 @@
         }
         
         // =================================================================
-        //                     核心功能函数定义 (双子星部分)
+        //                     核心功能函数定义
         // =================================================================
         
         const ParticleModels = {
@@ -331,34 +594,31 @@
                     pos.push(radius * Math.cos(phi));
                 }
                 return pos;
-            },
-            CometTrail: (count, spread) => { 
-                const positions = [];
-                const ages = []; 
-                for (let i = 0; i < count; i++) {
-                    positions.push((Math.random() - 0.5) * spread * 0.1); 
-                    positions.push((Math.random() - 0.5) * spread * 0.1);
-                    positions.push((Math.random() - 0.5) * spread * 0.1);
-                    ages.push(Math.random() * Params.trailLength); 
-                }
-                return { positions, ages };
-            },
-            Firework: (count, spread) => { 
-                const positions = [];
-                for (let i = 0; i < count; i++) {
-                    const radius = Math.random() * spread;
-                    const theta = Math.random() * Math.PI * 2;
-                    const phi = Math.acos(Math.random() * 2 - 1);
-                    positions.push(radius * Math.sin(phi) * Math.cos(theta));
-                    positions.push(radius * Math.sin(phi) * Math.sin(theta));
-                    positions.push(radius * Math.cos(phi));
-                }
-                return positions;
             }
         };
 
+        // 创建彗星尾巴纹理
+        function createCometTrailTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 8;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            
+            const gradient = ctx.createLinearGradient(0, 0, 0, 64);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.2, 'rgba(200, 200, 255, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(150, 150, 255, 0.4)');
+            gradient.addColorStop(0.8, 'rgba(100, 100, 255, 0.1)');
+            gradient.addColorStop(1, 'rgba(50, 50, 255, 0)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 8, 64);
+            
+            return new THREE.CanvasTexture(canvas);
+        }
+
         function createBackgroundParticles() {
-              const bgGeometry = new THREE.BufferGeometry();
+            const bgGeometry = new THREE.BufferGeometry();
             const bgPositions = [];
             const bgCount = 500;
             for (let i = 0; i < bgCount; i++) {
@@ -377,14 +637,7 @@
         }
 
         function updateParticleSystem(targetObject, modelName, color, density, spread, size, isInitial = false) {
-            let modelData;
-            if (modelName === 'CometTrail') {
-                modelData = ParticleModels[modelName](density, spread);
-            } else {
-                modelData = { positions: ParticleModels[modelName](density, spread) };
-            }
-            
-            const newPositions = modelData.positions;
+            const newPositions = ParticleModels[modelName](density, spread);
             const particleCount = newPositions.length / 3;
             
             const colors = new Float32Array(particleCount * 3);
@@ -392,121 +645,309 @@
             const centerColor = new THREE.Color(0xFFFFFF); 
 
             for (let i = 0; i < particleCount; i++) {
-                if (modelName === 'Sphere') {
-                    const x = newPositions[i * 3];
-                    const y = newPositions[i * 3 + 1];
-                    const z = newPositions[i * 3 + 2];
-                    const distance = Math.sqrt(x*x + y*y + z*z);
-                    const distanceRatio = distance / spread; 
-                    
-                    const finalColor = new THREE.Color();
-                    finalColor.copy(baseColor).lerp(centerColor, 1 - distanceRatio); 
+                const x = newPositions[i * 3];
+                const y = newPositions[i * 3 + 1];
+                const z = newPositions[i * 3 + 2];
+                const distance = Math.sqrt(x*x + y*y + z*z);
+                const distanceRatio = distance / spread; 
+                
+                const finalColor = new THREE.Color();
+                finalColor.copy(baseColor).lerp(centerColor, 1 - distanceRatio); 
 
-                    colors[i * 3 + 0] = finalColor.r;
-                    colors[i * 3 + 1] = finalColor.g;
-                    colors[i * 3 + 2] = finalColor.b;
-                } else {
-                    colors[i * 3 + 0] = baseColor.r;
-                    colors[i * 3 + 1] = baseColor.g;
-                    colors[i * 3 + 2] = baseColor.b;
-                }
+                colors[i * 3 + 0] = finalColor.r;
+                colors[i * 3 + 1] = finalColor.g;
+                colors[i * 3 + 2] = finalColor.b;
             }
 
-            if (isInitial || targetObject === undefined || targetObject.geometry.attributes.position.count !== particleCount) {
-                const particleGeometry = new THREE.BufferGeometry();
-                particleGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(newPositions), 3));
-                particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            const particleGeometry = new THREE.BufferGeometry();
+            particleGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(newPositions), 3));
+            particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const particleMaterial = new THREE.PointsMaterial({
+                size: size,
+                vertexColors: true, 
+                blending: THREE.AdditiveBlending,
+                transparent: true,
+                depthWrite: false, 
+                sizeAttenuation: true
+            });
 
-                if (modelName === 'CometTrail') {
-                    particleGeometry.setAttribute('age', new THREE.BufferAttribute(new Float32Array(modelData.ages), 1));
-                    particleGeometry.setAttribute('startPosition', new THREE.BufferAttribute(new Float32Array(newPositions), 3));
-                }
+            if (targetObject) scene.remove(targetObject);
+            targetObject = new THREE.Points(particleGeometry, particleMaterial);
+            scene.add(targetObject);
+            return targetObject;
+        }
+
+        // 计算抛物线位置 - 与旋转方向相反
+        function calculateParabolaPosition(distance, angle, starPos, outwardDir, rotationDir) {
+            // 距离因子
+            const t = Math.min(1, distance / COMET_TRAIL_CONFIG.maxTrailLength);
+            
+            // 抛物线弯曲 - 与旋转方向相反
+            const curveAmount = COMET_TRAIL_CONFIG.curveDirection * COMET_TRAIL_CONFIG.parabolaHeight * (t * t);
+            
+            // 计算向外方向的垂直向量
+            const up = new THREE.Vector3(0, 1, 0);
+            const right = new THREE.Vector3().crossVectors(outwardDir, up).normalize();
+            
+            // 确保 right 向量有效
+            if (right.length() < 0.1) {
+                right.set(1, 0, 0);
+            }
+            
+            // 在向外方向上移动粒子
+            const forward = outwardDir.clone().multiplyScalar(distance);
+            
+            // 抛物线弯曲 - 使用旋转方向来决定弯曲方向
+            const bendDir = rotationDir.clone().normalize();
+            const parabolicBend = bendDir.clone().multiplyScalar(curveAmount);
+            
+            // 圆周分布 - 保持与星球直径相同的宽度
+            const trailWidth = COMET_TRAIL_CONFIG.starDiameter;
+            const lateralOffset = Math.cos(angle) * trailWidth * 0.5;
+            const verticalOffset = Math.sin(angle) * trailWidth * 0.25;
+            
+            const lateralDir = right.clone().multiplyScalar(lateralOffset);
+            const verticalDir = up.clone().multiplyScalar(verticalOffset);
+            
+            // 合成最终位置
+            return starPos.clone()
+                .add(forward)
+                .add(parabolicBend)
+                .add(lateralDir)
+                .add(verticalDir);
+        }
+
+        // 创建一条彗星尾巴 - 抛物线效果
+        function createCometTrail(color, index, totalTrails) {
+            const particlesPerTrail = COMET_TRAIL_CONFIG.particlesPerTrail;
+            
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particlesPerTrail * 3);
+            const ages = new Float32Array(particlesPerTrail);
+            const colors = new Float32Array(particlesPerTrail * 3);
+            
+            const baseColor = new THREE.Color(color);
+            
+            // 每条尾巴有不同的起始角度
+            const startAngle = (index / totalTrails) * Math.PI * 2;
+            
+            for (let i = 0; i < particlesPerTrail; i++) {
+                // 距离因子 (0 靠近星球, 1 最远)
+                const distanceFactor = i / particlesPerTrail;
                 
-                const particleMaterial = new THREE.PointsMaterial({
-                    size: size,
-                    vertexColors: true, 
-                    blending: THREE.AdditiveBlending,
-                    transparent: true,
-                    depthWrite: false, 
-                    sizeAttenuation: true
-                });
-
-                if (targetObject) scene.remove(targetObject);
-                targetObject = new THREE.Points(particleGeometry, particleMaterial);
+                // 粒子角度保持不变（无螺旋）
+                const particleAngle = startAngle;
                 
-                if (modelName === 'CometTrail') {
-                    targetObject.userData.ages = modelData.ages; 
-                }
+                // 初始位置
+                positions[i*3] = 0;
+                positions[i*3+1] = 0;
+                positions[i*3+2] = 0;
                 
-                scene.add(targetObject);
-                return targetObject; 
-            } else {
-                targetObject.geometry.attributes.position.array.set(newPositions);
-                targetObject.geometry.attributes.position.needsUpdate = true;
-                targetObject.geometry.attributes.color.array.set(colors);
-                targetObject.geometry.attributes.color.needsUpdate = true;
+                // 年龄随机分布 - 年龄越大，距离越远
+                ages[i] = Math.random() * 100 * (1 - distanceFactor * 0.5);
+                
+                // 亮度衰减
+                const brightnessFactor = COMET_TRAIL_CONFIG.baseBrightness * 
+                                        Math.pow(1 - distanceFactor, COMET_TRAIL_CONFIG.brightnessFalloff);
+                
+                colors[i*3] = baseColor.r * brightnessFactor;
+                colors[i*3+1] = baseColor.g * brightnessFactor;
+                colors[i*3+2] = baseColor.b * brightnessFactor;
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('age', new THREE.BufferAttribute(ages, 1));
+            
+            const material = new THREE.PointsMaterial({
+                size: COMET_TRAIL_CONFIG.particleSize,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                map: createCometTrailTexture(),
+                depthWrite: false,
+                transparent: true,
+                sizeAttenuation: true
+            });
+            
+            const trail = new THREE.Points(geometry, material);
+            
+            trail.userData = {
+                ages: ages,
+                startAngle: startAngle,
+                particlesPerTrail: particlesPerTrail,
+                baseColor: baseColor.clone(),
+                colors: colors
+            };
+            
+            return trail;
+        }
 
-                if (modelName === 'CometTrail') {
-                    targetObject.userData.ages = modelData.ages;
-                    targetObject.geometry.attributes.age.array.set(modelData.ages);
-                    targetObject.geometry.attributes.age.needsUpdate = true;
-                }
-
-                targetObject.material.color.set(new THREE.Color(color)); 
-                targetObject.material.size = size;
-                return targetObject;
+        // 创建所有彗星尾巴
+        function createAllCometTrails() {
+            const trailCount = COMET_TRAIL_CONFIG.trailCount;
+            
+            for (let i = 0; i < trailCount; i++) {
+                const trail1 = createCometTrail(Params.starColor1, i, trailCount);
+                scene.add(trail1);
+                cometTrails1.push(trail1);
+                
+                const trail2 = createCometTrail(Params.starColor2, i, trailCount);
+                scene.add(trail2);
+                cometTrails2.push(trail2);
             }
         }
 
-        function loadAllImagesAndCreatePlanes(imagePaths) {
-            const textureLoader = new THREE.TextureLoader();
-            const geometry = new THREE.PlaneGeometry(1, 1); 
-            const MAX_POSITION_RANGE = 8.0; 
-            const MIN_SCALE = 0.5; 
-            const MAX_SCALE = 1.0; 
-            const BASE_IMAGE_WIDTH = 1.0; 
-
-            imagePaths.forEach((filename) => {
-                const path = IMAGE_BASE_PATH + filename;
+        // 更新彗星尾巴 - 抛物线效果
+        function updateCometTrails(deltaSec) {
+            if (!star1 || !star2) return;
+            
+            const particlesPerTrail = COMET_TRAIL_CONFIG.particlesPerTrail;
+            
+            // 计算向外发射方向
+            const outwardDir1 = star1.position.clone().sub(particlesPosition).normalize();
+            const outwardDir2 = star2.position.clone().sub(particlesPosition).normalize();
+            
+            // 计算旋转方向 - 用于抛物线弯曲
+            // 根据轨道速度计算切线方向
+            const tangent1 = new THREE.Vector3(-Math.sin(orbitTime), Math.cos(orbitTime), 0).applyMatrix4(new THREE.Matrix4().makeRotationX(ORBIT_TILT_ANGLE));
+            const tangent2 = new THREE.Vector3(-Math.sin(orbitTime + Math.PI), Math.cos(orbitTime + Math.PI), 0).applyMatrix4(new THREE.Matrix4().makeRotationX(ORBIT_TILT_ANGLE));
+            
+            // 更新第一颗星的所有尾巴
+            cometTrails1.forEach((trail, trailIndex) => {
+                const positions = trail.geometry.attributes.position.array;
+                const ages = trail.userData.ages;
+                const colors = trail.geometry.attributes.color.array;
+                const startAngle = trail.userData.startAngle;
+                const baseColor = trail.userData.baseColor;
                 
-                textureLoader.load(path, function(texture) {
+                for (let i = 0; i < particlesPerTrail; i++) {
+                    // 年龄增加
+                    ages[i] += deltaSec * 30;
                     
-                    const aspectRatio = texture.image.width / texture.image.height;
-                    const width = BASE_IMAGE_WIDTH;
-                    const height = BASE_IMAGE_WIDTH / aspectRatio;
-                    const randomScale = MIN_SCALE + Math.random() * (MAX_SCALE - MIN_SCALE);
+                    // 距离因子
+                    const distanceFactor = i / particlesPerTrail;
                     
-                    const material = new THREE.MeshBasicMaterial({
-                        map: texture, 
-                        transparent: true,
-                        opacity: 0.0, 
-                        blending: THREE.AdditiveBlending, 
-                        side: THREE.DoubleSide
-                    });
+                    if (ages[i] > 100) {
+                        ages[i] = 0;
+                        
+                        // 重置粒子到星球边缘
+                        const resetDistance = COMET_TRAIL_CONFIG.starDiameter / 2;
+                        
+                        const pos = calculateParabolaPosition(
+                            resetDistance, 
+                            startAngle, 
+                            star1.position, 
+                            outwardDir1,
+                            tangent1  // 传入旋转方向
+                        );
+                        
+                        positions[i*3] = pos.x;
+                        positions[i*3+1] = pos.y;
+                        positions[i*3+2] = pos.z;
+                    } else {
+                        // 根据年龄计算当前位置
+                        const ageRatio = ages[i] / 100;
+                        
+                        // 年龄越大，距离越远
+                        const currentDistance = (COMET_TRAIL_CONFIG.starDiameter / 2) + 
+                                               (COMET_TRAIL_CONFIG.maxTrailLength - COMET_TRAIL_CONFIG.starDiameter / 2) * 
+                                               ageRatio;
+                        
+                        const pos = calculateParabolaPosition(
+                            currentDistance,
+                            startAngle,
+                            star1.position,
+                            outwardDir1,
+                            tangent1  // 传入旋转方向
+                        );
+                        
+                        positions[i*3] = pos.x;
+                        positions[i*3+1] = pos.y;
+                        positions[i*3+2] = pos.z;
+                    }
                     
-                    const imagePlane = new THREE.Mesh(geometry, material);
-                    imagePlane.scale.set(width * randomScale, height * randomScale, 1);
-
-                    const randomX = (Math.random() - 0.5) * 2 * MAX_POSITION_RANGE;
-                    const randomY = (Math.random() - 0.5) * 2 * MAX_POSITION_RANGE;
-                    const randomZ = (Math.random() - 0.5) * 2 * MAX_POSITION_RANGE;
-                    imagePlane.position.set(randomX, randomY, randomZ);
+                    // 亮度衰减
+                    const ageRatio = ages[i] / 100;
+                    const brightnessFactor = COMET_TRAIL_CONFIG.baseBrightness * 
+                                            Math.pow(1 - distanceFactor, COMET_TRAIL_CONFIG.brightnessFalloff) *
+                                            (1 - ageRatio * 0.3);
                     
-                    scene.add(imagePlane);
-                    imagePlanes.push(imagePlane);
-
-                }, undefined, function(err) {
-                    console.error(
-                        '❌ 加载图片失败，请检查以下几点：', 
-                        '\n1. 路径是否正确: ', path, 
-                        '\n2. 检查图片文件是否**位于与 index.html 同一文件夹**。',
-                        '\n3. **重要：您是否在本地 Web Server 上运行？** 尝试使用 VS Code Live Server 或其他本地服务器启动 HTML 文件。',
-                        '\n原始错误:', err
-                    );
-                });
+                    colors[i*3] = baseColor.r * brightnessFactor;
+                    colors[i*3+1] = baseColor.g * brightnessFactor;
+                    colors[i*3+2] = baseColor.b * brightnessFactor;
+                }
+                
+                trail.geometry.attributes.position.needsUpdate = true;
+                trail.geometry.attributes.color.needsUpdate = true;
+            });
+            
+            // 更新第二颗星的所有尾巴
+            cometTrails2.forEach((trail, trailIndex) => {
+                const positions = trail.geometry.attributes.position.array;
+                const ages = trail.userData.ages;
+                const colors = trail.geometry.attributes.color.array;
+                const startAngle = trail.userData.startAngle;
+                const baseColor = trail.userData.baseColor;
+                
+                for (let i = 0; i < particlesPerTrail; i++) {
+                    ages[i] += deltaSec * 30;
+                    
+                    const distanceFactor = i / particlesPerTrail;
+                    
+                    if (ages[i] > 100) {
+                        ages[i] = 0;
+                        
+                        const resetDistance = COMET_TRAIL_CONFIG.starDiameter / 2;
+                        
+                        const pos = calculateParabolaPosition(
+                            resetDistance, 
+                            startAngle, 
+                            star2.position, 
+                            outwardDir2,
+                            tangent2  // 传入旋转方向
+                        );
+                        
+                        positions[i*3] = pos.x;
+                        positions[i*3+1] = pos.y;
+                        positions[i*3+2] = pos.z;
+                    } else {
+                        const ageRatio = ages[i] / 100;
+                        const currentDistance = (COMET_TRAIL_CONFIG.starDiameter / 2) + 
+                                               (COMET_TRAIL_CONFIG.maxTrailLength - COMET_TRAIL_CONFIG.starDiameter / 2) * 
+                                               ageRatio;
+                        
+                        const pos = calculateParabolaPosition(
+                            currentDistance,
+                            startAngle,
+                            star2.position,
+                            outwardDir2,
+                            tangent2  // 传入旋转方向
+                        );
+                        
+                        positions[i*3] = pos.x;
+                        positions[i*3+1] = pos.y;
+                        positions[i*3+2] = pos.z;
+                    }
+                    
+                    const ageRatio = ages[i] / 100;
+                    const brightnessFactor = COMET_TRAIL_CONFIG.baseBrightness * 
+                                            Math.pow(1 - distanceFactor, COMET_TRAIL_CONFIG.brightnessFalloff) *
+                                            (1 - ageRatio * 0.3);
+                    
+                    colors[i*3] = baseColor.r * brightnessFactor;
+                    colors[i*3+1] = baseColor.g * brightnessFactor;
+                    colors[i*3+2] = baseColor.b * brightnessFactor;
+                }
+                
+                trail.geometry.attributes.position.needsUpdate = true;
+                trail.geometry.attributes.color.needsUpdate = true;
             });
         }
-        
+
+        // =================================================================
+        // MediaPipe 手势处理
+        // =================================================================
         function onResults(results) {
             let rawScaleInput = 1.0;
             let currentHandPosition = null;
@@ -520,7 +961,7 @@
                 const hand1 = detectedHands[0];
                 const hand2 = detectedHands[1];
                 const wrist1 = hand1[0];
-                const wrist2 = hand2[1]; 
+                const wrist2 = hand2[0]; 
                 
                 if (!wrist1 || !wrist2) return; 
                 
@@ -536,7 +977,8 @@
                 
                 currentHandPosition = new THREE.Vector3(
                     (0.5 - centerX) * SCENE_SENSITIVITY, 
-                    (0.5 - centerY) * SCENE_SENSITIVITY, 0 
+                    (0.5 - centerY) * SCENE_SENSITIVITY, 
+                    0 
                 );
 
             } else if (handCount === 1) {
@@ -557,7 +999,8 @@
                 
                 currentHandPosition = new THREE.Vector3(
                     (0.5 - wrist.x) * SCENE_SENSITIVITY, 
-                    (0.5 - wrist.y) * SCENE_SENSITIVITY, 0 
+                    (0.5 - wrist.y) * SCENE_SENSITIVITY, 
+                    0 
                 );
             } 
             
@@ -567,12 +1010,17 @@
                 currentHandPosition.y = Math.min(limit, Math.max(-limit, currentHandPosition.y));
                 positionXHistory.push(currentHandPosition.x);
                 positionYHistory.push(currentHandPosition.y);
-                if (positionXHistory.length > WINDOW_SIZE) { positionXHistory.shift(); positionYHistory.shift(); }
+                if (positionXHistory.length > WINDOW_SIZE) { 
+                    positionXHistory.shift(); 
+                    positionYHistory.shift(); 
+                }
                 const smoothX = positionXHistory.reduce((a, b) => a + b, 0) / positionXHistory.length;
                 const smoothY = positionYHistory.reduce((a, b) => a + b, 0) / positionYHistory.length;
                 targetPosition.set(smoothX, smoothY, 0);
                 scaleHistory.push(rawScaleInput);
-                if (scaleHistory.length > WINDOW_SIZE) { scaleHistory.shift(); }
+                if (scaleHistory.length > WINDOW_SIZE) { 
+                    scaleHistory.shift(); 
+                }
                 const smoothScale = scaleHistory.reduce((a, b) => a + b, 0) / scaleHistory.length;
                 targetScale = Math.min(3.5, Math.max(0.5, smoothScale)); 
 
@@ -587,47 +1035,6 @@
             }
         }
 
-        function triggerFirework() {
-              if (!Params.enableFireworks) return;
-
-            const fireworkGeometry = new THREE.BufferGeometry();
-            const positions = ParticleModels.Firework(Params.fireworkDensity, Params.fireworkSpread);
-            fireworkGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-
-            const colors = new Float32Array(Params.fireworkDensity * 3);
-            const fireworkColor = new THREE.Color(Math.random() * 0xffffff); 
-            for (let i = 0; i < Params.fireworkDensity; i++) {
-                colors[i * 3 + 0] = fireworkColor.r;
-                colors[i * 3 + 1] = fireworkColor.g;
-                colors[i * 3 + 2] = fireworkColor.b;
-            }
-            fireworkGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-            const material = new THREE.PointsMaterial({
-                size: 0.1, 
-                vertexColors: true,
-                blending: THREE.AdditiveBlending,
-                transparent: true,
-                depthWrite: false 
-            });
-
-            const fireworkMesh = new THREE.Points(fireworkGeometry, material);
-            
-            const range = 8.0 * 1.5; 
-            fireworkMesh.position.set(
-                (Math.random() - 0.5) * 2 * range,
-                (Math.random() - 0.5) * 2 * range,
-                (Math.random() - 0.5) * 2 * range
-            );
-            scene.add(fireworkMesh);
-
-            fireworks.push({
-                mesh: fireworkMesh,
-                startTime: Date.now(),
-                lifetime: Params.fireworkLifetime * 1000 
-            });
-        }
-        
         async function setupMediaPipe() {
             const videoElement = document.getElementById('webcam-video');
 
@@ -639,7 +1046,7 @@
 
             hands.setOptions({
                 maxNumHands: 2,
-                modelComplexity: 1, 
+                modelComplexity: 1,
                 minDetectionConfidence: 0.5,
                 minTrackingConfidence: 0.5
             });
@@ -648,78 +1055,372 @@
 
             try {
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                      throw new Error("浏览器不支持摄像头 API。");
+                    throw new Error("浏览器不支持摄像头 API。");
                 }
                 
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                videoElement.srcObject = stream;
-                await new Promise((resolve) => {
-                    videoElement.onloadedmetadata = resolve;
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: "user"
+                    } 
                 });
-                videoElement.play();
+                
+                videoElement.srcObject = stream;
+                
+                await new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => {
+                        resolve();
+                    };
+                });
+                
+                await videoElement.play();
+
+                if (typeof Camera === 'undefined') {
+                    console.error('Camera 对象未定义');
+                    return;
+                }
 
                 const cameraMP = new Camera(videoElement, {
                     onFrame: async () => {
                         if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
-                            await hands.send({ image: videoElement });
+                            try {
+                                await hands.send({ image: videoElement });
+                            } catch (e) {}
                         }
                     },
-                    width: 1280, 
-                    height: 720
+                    width: 640,
+                    height: 480
                 });
 
                 cameraMP.start();
-                console.log("MediaPipe 经典 Hands API 启动成功，正在等待视频流...");
+                console.log("MediaPipe 手势识别已启动");
 
             } catch (err) {
-                console.error("MediaPipe 初始化失败或摄像头启动失败:", err);
-                console.warn("请检查您的摄像头权限、网络连接和浏览器控制台是否有错误。");
+                console.error("MediaPipe 初始化失败:", err);
             }
         }
 
-        // --- 音乐控制 ---
-        const bgMusic = document.getElementById('background-music');
-        const musicBtn = document.getElementById('music-control-btn');
-
-        function setupMusicControls() {
-            musicBtn.addEventListener('click', () => {
-                if (musicPlaying) {
-                    bgMusic.pause();
-                    musicBtn.textContent = '▶️ 播放背景音乐 (热带雨林)';
-                    musicBtn.style.backgroundColor = 'rgba(255, 100, 100, 0.8)';
-                } else {
-                    // 尝试播放，浏览器可能需要用户交互
-                    bgMusic.play().then(() => {
-                        musicBtn.textContent = '⏸️ 暂停背景音乐 (热带雨林)';
-                        musicBtn.style.backgroundColor = 'rgba(100, 100, 100, 0.8)';
-                    }).catch(error => {
-                        console.warn("音乐播放被阻止，需要再次点击或用户交互:", error);
-                        musicBtn.textContent = '▶️ 播放背景音乐 (热带雨林)';
-                        musicBtn.style.backgroundColor = 'rgba(255, 100, 100, 0.8)';
-                    });
-                }
-                musicPlaying = !musicPlaying;
-            });
-        }
+        // =================================================================
+        //                 烟花效果实现
+        // =================================================================
         
-        function manageMusicVolume() {
-            const musicVolume = bgMusic.volume;
-            let targetVolume = 0.7; // 默认外部音量
-            const INSIDE_VOLUME = 0.2; // 星系内部柔和音量
+        function createRocketTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 16;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
             
-            if (insideStar) {
-                targetVolume = INSIDE_VOLUME;
-            }
+            const gradient = ctx.createLinearGradient(0, 0, 0, 32);
+            gradient.addColorStop(0, 'rgba(255, 200, 100, 0.9)');
+            gradient.addColorStop(0.3, 'rgba(255, 150, 50, 0.6)');
+            gradient.addColorStop(0.7, 'rgba(255, 100, 0, 0.3)');
+            gradient.addColorStop(1, 'rgba(255, 50, 0, 0)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 16, 32);
+            
+            return new THREE.CanvasTexture(canvas);
+        }
 
-            // 平滑过渡音量
-            bgMusic.volume += (targetVolume - musicVolume) * 0.2;
+        function createSparkTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 8;
+            canvas.height = 48;
+            const ctx = canvas.getContext('2d');
+            
+            const gradient = ctx.createLinearGradient(0, 0, 0, 48);
+            gradient.addColorStop(0, 'rgba(255, 255, 200, 1)');
+            gradient.addColorStop(0.2, 'rgba(255, 220, 100, 0.9)');
+            gradient.addColorStop(0.5, 'rgba(255, 150, 50, 0.6)');
+            gradient.addColorStop(0.8, 'rgba(255, 100, 0, 0.3)');
+            gradient.addColorStop(1, 'rgba(255, 50, 0, 0)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 8, 48);
+            
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function getRandomRocketColor() {
+            const colors = [
+                new THREE.Color(0xffaa33),
+                new THREE.Color(0xff6633),
+                new THREE.Color(0xff3366),
+                new THREE.Color(0x33ff99),
+                new THREE.Color(0x3399ff),
+                new THREE.Color(0xff33ff),
+                new THREE.Color(0xffff33)
+            ];
+            return colors[Math.floor(Math.random() * colors.length)].clone();
+        }
+
+        function createRocket() {
+            const range = FIREWORK_CONFIG.randomPositionRange;
+            const startX = (Math.random() - 0.5) * range.x;
+            const startZ = (Math.random() - 0.5) * range.z;
+            
+            const startY = 1;
+            const targetY = range.yMin + Math.random() * (range.yMax - range.yMin);
+            
+            const rocketColor = getRandomRocketColor();
+            const rocketSpeed = FIREWORK_CONFIG.rocketSpeedMin + 
+                               Math.random() * (FIREWORK_CONFIG.rocketSpeedMax - FIREWORK_CONFIG.rocketSpeedMin);
+            
+            const particleCount = 40;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+            
+            for (let i = 0; i < particleCount; i++) {
+                positions[i*3] = (Math.random() - 0.5) * 0.5;
+                positions[i*3+1] = (Math.random() - 0.5) * 1.2;
+                positions[i*3+2] = (Math.random() - 0.5) * 0.5;
+                
+                colors[i*3] = rocketColor.r * (0.8 + 0.2 * Math.random());
+                colors[i*3+1] = rocketColor.g * (0.8 + 0.2 * Math.random());
+                colors[i*3+2] = rocketColor.b * (0.8 + 0.2 * Math.random());
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: 0.25,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                map: createRocketTexture(),
+                depthWrite: false,
+                transparent: true,
+                sizeAttenuation: true
+            });
+            
+            const rocket = new THREE.Points(geometry, material);
+            rocket.position.set(startX, startY, startZ);
+            
+            const trailCount = 60;
+            const trailGeometry = new THREE.BufferGeometry();
+            const trailPositions = new Float32Array(trailCount * 3);
+            const trailColors = new Float32Array(trailCount * 3);
+            
+            for (let i = 0; i < trailCount; i++) {
+                trailPositions[i*3] = 0;
+                trailPositions[i*3+1] = 0;
+                trailPositions[i*3+2] = 0;
+                
+                const fade = 1 - i / trailCount;
+                trailColors[i*3] = rocketColor.r * fade * 0.8;
+                trailColors[i*3+1] = rocketColor.g * fade * 0.8;
+                trailColors[i*3+2] = rocketColor.b * fade * 0.8;
+            }
+            
+            trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+            trailGeometry.setAttribute('color', new THREE.BufferAttribute(trailColors, 3));
+            
+            const trailMaterial = new THREE.PointsMaterial({
+                size: 0.2,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                map: createSparkTexture(),
+                depthWrite: false,
+                transparent: true,
+                sizeAttenuation: true
+            });
+            
+            const trail = new THREE.Points(trailGeometry, trailMaterial);
+            rocket.add(trail);
+            
+            rocket.userData = {
+                type: 'rocket',
+                startY: startY,
+                targetY: targetY,
+                progress: 0,
+                speed: rocketSpeed,
+                color: rocketColor,
+                trail: trail,
+                trailPositions: trailPositions,
+                trailIndex: 0,
+                exploded: false
+            };
+            
+            return rocket;
+        }
+
+        function createExplosion(position) {
+            const count = FIREWORK_PARAMS.particleCount;
+            const particleSize = FIREWORK_PARAMS.particleSize;
+            const brightness = FIREWORK_PARAMS.brightness;
+            
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+            const velocities = new Float32Array(count * 3);
+            const colors = new Float32Array(count * 3);
+            const ages = new Float32Array(count);
+            
+            const goldColors = [
+                new THREE.Color(0xffaa33),
+                new THREE.Color(0xffdd55),
+                new THREE.Color(0xffffee),
+                new THREE.Color(0xff8833),
+                new THREE.Color(0xffaa55),
+                new THREE.Color(0xffbb44)
+            ];
+            
+            for (let i = 0; i < count; i++) {
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                
+                const speed = 0.18 + Math.random() * 0.25;
+                
+                velocities[i*3] = Math.sin(phi) * Math.cos(theta) * speed;
+                velocities[i*3+1] = Math.sin(phi) * Math.sin(theta) * speed;
+                velocities[i*3+2] = Math.cos(phi) * speed;
+                
+                positions[i*3] = 0;
+                positions[i*3+1] = 0;
+                positions[i*3+2] = 0;
+                
+                ages[i] = Math.random() * FIREWORK_CONFIG.trailLength;
+                
+                const goldColor = goldColors[Math.floor(Math.random() * goldColors.length)].clone();
+                colors[i*3] = goldColor.r * (0.9 + 0.3 * Math.random()) * brightness;
+                colors[i*3+1] = goldColor.g * (0.8 + 0.3 * Math.random()) * brightness;
+                colors[i*3+2] = goldColor.b * (0.6 + 0.3 * Math.random()) * brightness;
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('age', new THREE.BufferAttribute(ages, 1));
+            
+            geometry.userData.velocities = velocities;
+            geometry.userData.initialColors = colors.slice(0);
+            
+            const material = new THREE.PointsMaterial({
+                size: particleSize,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                map: createSparkTexture(),
+                depthWrite: false,
+                transparent: true,
+                sizeAttenuation: true
+            });
+            
+            const explosion = new THREE.Points(geometry, material);
+            explosion.position.copy(position);
+            
+            explosion.userData = {
+                velocities: velocities,
+                initialColors: colors.slice(0),
+                ages: ages,
+                lifetime: 5.0,
+                elapsed: 0,
+                trailLength: FIREWORK_CONFIG.trailLength
+            };
+            
+            return explosion;
+        }
+
+        function updateFireworks(delta, currentTime) {
+            const deltaSec = delta / 1000;
+            
+            for (let i = rockets.length - 1; i >= 0; i--) {
+                const rocket = rockets[i];
+                
+                if (!rocket.userData.exploded) {
+                    rocket.userData.progress += deltaSec * rocket.userData.speed;
+                    
+                    if (rocket.userData.progress >= 1) {
+                        rocket.userData.exploded = true;
+                        
+                        const explosion = createExplosion(rocket.position.clone());
+                        scene.add(explosion);
+                        fireworks.push(explosion);
+                        
+                        scene.remove(rocket);
+                        rockets.splice(i, 1);
+                    } else {
+                        const newY = rocket.userData.startY + (rocket.userData.targetY - rocket.userData.startY) * rocket.userData.progress;
+                        rocket.position.y = newY;
+                        
+                        const trail = rocket.userData.trail;
+                        if (trail) {
+                            const positions = trail.geometry.attributes.position.array;
+                            const trailIndex = rocket.userData.trailIndex || 0;
+                            
+                            for (let j = 0; j < positions.length / 3; j++) {
+                                const idx = (trailIndex - j + positions.length / 3) % (positions.length / 3);
+                                positions[idx*3] = 0;
+                                positions[idx*3+1] = -j * 0.2;
+                                positions[idx*3+2] = 0;
+                            }
+                            
+                            rocket.userData.trailIndex = (trailIndex + 1) % (positions.length / 3);
+                            trail.geometry.attributes.position.needsUpdate = true;
+                        }
+                    }
+                }
+            }
+            
+            for (let i = fireworks.length - 1; i >= 0; i--) {
+                const f = fireworks[i];
+                f.userData.elapsed += deltaSec;
+                
+                const positions = f.geometry.attributes.position.array;
+                const velocities = f.userData.velocities;
+                const colorsAttr = f.geometry.attributes.color.array;
+                const ages = f.userData.ages;
+                const count = positions.length / 3;
+                
+                for (let j = 0; j < count; j++) {
+                    positions[j*3] += velocities[j*3] * deltaSec * 25;
+                    positions[j*3+1] += velocities[j*3+1] * deltaSec * 25;
+                    positions[j*3+2] += velocities[j*3+2] * deltaSec * 25;
+                    
+                    ages[j] += deltaSec * 35;
+                    
+                    const ageRatio = Math.min(1, ages[j] / f.userData.trailLength);
+                    const fadeFactor = Math.max(0, 1 - f.userData.elapsed / f.userData.lifetime);
+                    
+                    const originalR = f.userData.initialColors[j*3];
+                    const originalG = f.userData.initialColors[j*3+1];
+                    const originalB = f.userData.initialColors[j*3+2];
+                    
+                    colorsAttr[j*3] = originalR * fadeFactor * (1 - ageRatio * 0.6);
+                    colorsAttr[j*3+1] = originalG * fadeFactor * (1 - ageRatio * 0.6);
+                    colorsAttr[j*3+2] = originalB * fadeFactor * (1 - ageRatio * 0.6);
+                }
+                
+                f.geometry.attributes.position.needsUpdate = true;
+                f.geometry.attributes.color.needsUpdate = true;
+                
+                if (f.userData.elapsed >= f.userData.lifetime) {
+                    scene.remove(f);
+                    fireworks.splice(i, 1);
+                }
+            }
+            
+            if (rockets.length + fireworks.length < FIREWORK_CONFIG.maxConcurrentFireworks * 2) {
+                if (currentTime >= nextLaunchTime) {
+                    const rocket = createRocket();
+                    scene.add(rocket);
+                    rockets.push(rocket);
+                    
+                    const randomInterval = FIREWORK_CONFIG.launchIntervalMin + 
+                                          Math.random() * (FIREWORK_CONFIG.launchIntervalMax - FIREWORK_CONFIG.launchIntervalMin);
+                    nextLaunchTime = currentTime + randomInterval;
+                }
+            }
         }
 
         // --- 动画循环 ---
+        let lastTime = 0;
         function animate(time) {
             requestAnimationFrame(animate);
             
-            // 1. 手势和缩放处理
+            const delta = lastTime ? time - lastTime : 16;
+            const deltaSec = delta / 1000;
+            lastTime = time;
+            
             particleScale += (targetScale - particleScale) * 0.1;
             particlesPosition.lerp(targetPosition, SMOOTHING_FACTOR);
 
@@ -728,18 +1429,19 @@
             
             if (particleScale > ENTER_THRESHOLD && !insideStar) {
                 cameraTargetZ = -0.5; 
-                if(trailParticles) trailParticles.visible = false;
+                cometTrails1.forEach(trail => trail.visible = false);
+                cometTrails2.forEach(trail => trail.visible = false);
                 insideStar = true;
                 
             } else if (particleScale < EXIT_THRESHOLD && insideStar) {
                 cameraTargetZ = 10; 
-                if(trailParticles) trailParticles.visible = true;
+                cometTrails1.forEach(trail => trail.visible = true);
+                cometTrails2.forEach(trail => trail.visible = true);
                 insideStar = false;
             }
 
             camera.position.z += (cameraTargetZ - camera.position.z) * 0.1;
             
-            // 2. 粒子运动
             orbitTime += Params.orbitSpeed;
             const orbitRadius = Params.orbitRadius * particleScale; 
             
@@ -768,101 +1470,19 @@
                 star2.rotation.z -= 0.005; 
             }
 
-
-            // 🌟 轨迹粒子更新
-            if (trailParticles && trailParticles.visible && trailParticles.geometry.attributes.position && trailParticles.userData.ages) {
-                const positions = trailParticles.geometry.attributes.position.array;
-                const ages = trailParticles.geometry.attributes.age.array;
-                const colors = trailParticles.geometry.attributes.color.array;
-
-                const trailColorBase = new THREE.Color(Params.trailColor);
-                const trailDarkColor = new THREE.Color(0x000000); 
-                const trailCount = ages.length;
-                
-                const direction = currentStar1Pos.clone().sub(lastStar1Position).normalize().negate(); 
-                
-                if (lastStar1Position.length() === 0 || direction.lengthSq() < 0.0001) {
-                    direction.set(Math.cos(orbitTime + Math.PI*0.5), Math.sin(orbitTime + Math.PI*0.5), 0).negate().applyMatrix4(rotationMatrix);
-                }
-
-                for (let i = 0; i < trailCount; i++) {
-                    ages[i]++;
-                    
-                    if (ages[i] > Params.trailLength) {
-                        ages[i] = 0;
-                        
-                        const spread = Params.trailSpread * particleScale;
-                        positions[i * 3] = currentStar1Pos.x + (Math.random() - 0.5) * spread * 0.1; 
-                        positions[i * 3 + 1] = currentStar1Pos.y + (Math.random() - 0.5) * spread * 0.1;
-                        positions[i * 3 + 2] = currentStar1Pos.z + (Math.random() - 0.5) * spread * 0.1;
-                    }
-
-                    const velocityFactor = (1 - ages[i] / Params.trailLength) * TRAIL_VELOCITY * particleScale; 
-                    positions[i * 3] += direction.x * velocityFactor;
-                    positions[i * 3 + 1] += direction.y * velocityFactor;
-                    positions[i * 3 + 2] += direction.z * velocityFactor;
-                    
-                    const ageRatio = ages[i] / Params.trailLength; 
-                    const fadedColor = new THREE.Color().copy(trailColorBase).lerp(trailDarkColor, ageRatio * 0.9); 
-                    
-                    colors[i * 3 + 0] = fadedColor.r;
-                    colors[i * 3 + 1] = fadedColor.g;
-                    colors[i * 3 + 2] = fadedColor.b;
-                }
-
-                trailParticles.geometry.attributes.position.needsUpdate = true;
-                trailParticles.geometry.attributes.age.needsUpdate = true;
-                trailParticles.geometry.attributes.color.needsUpdate = true; 
-                
-                lastStar1Position.copy(currentStar1Pos);
-            }
+            // 更新彗星尾巴 - 抛物线效果
+            updateCometTrails(deltaSec);
             
             if (backgroundParticles) {
                 backgroundParticles.rotation.y -= 0.0005;
             }
-
-
-            // 🖼️ 图片显示/隐藏和旋转逻辑 
-            if (imagePlanes.length > 0) {
-                const targetOpacity = insideStar ? 1.0 : 0.0;
-                
-                imagePlanes.forEach((plane, index) => {
-                    plane.material.opacity += (targetOpacity - plane.material.opacity) * 0.1;
-                    plane.lookAt(camera.position); 
-                    const speed = 0.005 + Math.sin(index) * 0.001; 
-                    plane.rotation.z += speed; 
-                });
-            }
             
-            // 🎆 烟花逻辑
-            const currentTime = Date.now();
-            if (insideStar && Params.enableFireworks && (currentTime - lastFireworkTime > Params.fireworkInterval * 1000)) {
-                triggerFirework();
-                lastFireworkTime = currentTime;
-            }
+            updateFireworks(delta, time);
             
-            // 更新烟花生命周期和透明度
-            for (let i = fireworks.length - 1; i >= 0; i--) {
-                const f = fireworks[i];
-                const age = currentTime - f.startTime;
-                const lifeRatio = age / f.lifetime;
-
-                if (lifeRatio > 1.0) {
-                    scene.remove(f.mesh);
-                    fireworks.splice(i, 1);
-                } else {
-                    f.mesh.material.opacity = 1.0 - lifeRatio; 
-                    f.mesh.material.needsUpdate = true;
-                }
-            }
-            
-            // 🎶 音乐音量控制
             if (musicPlaying) {
                 manageMusicVolume();
             }
 
-
-            // --- 渲染部分 ---
             if (composer) {
                 composer.render();
             } else if (renderer) {
@@ -871,24 +1491,21 @@
         }
         
         // =================================================================
-        //                     初始化和事件绑定 (双子星部分)
+        //                     初始化和事件绑定
         // =================================================================
 
         function init() {
-            // 1. Scene setup
             const container = document.getElementById('container');
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.z = cameraTargetZ;
 
-            // 2. Renderer setup
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setClearColor(0x000000, 1);
             container.appendChild(renderer.domElement);
 
-            // 3. Post-processing (Bloom)
             const renderScene = new THREE.RenderPass(scene, camera);
             const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 
                                                         Params.bloomStrength, Params.bloomRadius, Params.bloomThreshold);
@@ -897,16 +1514,19 @@
             composer.addPass(renderScene);
             composer.addPass(bloomPass);
 
-            // 4. Initial Particle Systems
+            // 创建双子星粒子系统
             star1 = updateParticleSystem(star1, 'Sphere', Params.starColor1, Params.starDensity, Params.targetSpread, Params.particleSize, true);
             star2 = updateParticleSystem(star2, 'Sphere', Params.starColor2, Params.starDensity, Params.targetSpread, Params.particleSize, true);
-            trailParticles = updateParticleSystem(trailParticles, 'CometTrail', Params.trailColor, Params.trailDensity, Params.trailSpread, Params.trailSize, true);
+            
+            // 创建抛物线效果的彗星尾巴
+            createAllCometTrails();
+            
             createBackgroundParticles();
             
-            // 5. Load Images
-            loadAllImagesAndCreatePlanes(IMAGE_FILES);
-
-            // 6. DAT.GUI Controls
+            preloadImages();
+            
+            nextLaunchTime = performance.now() + 2000;
+            
             const gui = new dat.GUI();
             gui.addColor(Params, 'starColor1').onChange(() => updateParticleSystem(star1, 'Sphere', Params.starColor1, Params.starDensity, Params.targetSpread, Params.particleSize));
             gui.addColor(Params, 'starColor2').onChange(() => updateParticleSystem(star2, 'Sphere', Params.starColor2, Params.starDensity, Params.targetSpread, Params.particleSize));
@@ -927,11 +1547,9 @@
             bloomFolder.add(Params, 'bloomThreshold', 0, 1).name('Threshold').onChange(value => bloomPass.threshold = value);
             bloomFolder.open();
             
-            // 7. Event Listeners
             window.addEventListener('resize', onWindowResize, false);
             document.getElementById('fullscreen-btn').addEventListener('click', toggleFullScreen);
             
-            // 8. 音乐事件绑定
             setupMusicControls();
         }
 
@@ -952,15 +1570,19 @@
             }
         }
         
-        // --- 启动函数 ---
         document.addEventListener('DOMContentLoaded', () => {
             init();
-            setupMediaPipe(); // 启动摄像头和手势检测
-            createWindowsLoop(); // 启动温馨提示循环
+            setTimeout(() => {
+                if (typeof setupMediaPipe === 'function') {
+                    setupMediaPipe().catch(err => {
+                        console.error("手势识别启动失败", err);
+                    });
+                }
+            }, 1000);
+            createWindowsLoop();
             animate();
         });
         
     </script>
 </body>
 </html>
-```
